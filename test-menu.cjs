@@ -1,0 +1,30 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process');
+const {action,preparationPlan}=require('./menu-worker.cjs');
+const {encodedMenu}=require('./menu-launch.cjs');
+async function main(){
+ for(const [state,expected] of [[{phase:'none'},'prepare'],[{phase:'restored'},'prepare'],[{phase:'prepared'},'continue'],[{phase:'applied'},'already'],[{phase:'none',legacy:true},'already']])assert.equal(preparationPlan(state),expected);
+ assert.throws(()=>preparationPlan({phase:'applying'}));assert.throws(()=>preparationPlan({phase:'unknown'}));
+ let calls=[];const deps={inspect:()=>({phase:'none'}),cli:async command=>{calls.push(command);return{ok:true,output:command}}};
+ assert.equal((await action('check',deps)).next,'not-applied');assert.deepEqual(calls,['status']);
+ calls=[];deps.inspect=()=>({phase:'applied'});assert.equal((await action('check',deps)).next,'verified');assert.deepEqual(calls,['status','verify']);
+ calls=[];assert.equal((await action('prepare',deps)).next,'already');assert.deepEqual(calls,[]);
+ deps.inspect=()=>({phase:'prepared'});assert.equal((await action('prepare',deps)).next,'apply');assert.deepEqual(calls,[]);
+ deps.inspect=()=>({phase:'none'});deps.cli=async command=>{calls.push(command);return{ok:false,output:'injected failure'}};
+ assert.equal((await action('prepare',deps)).next,null);assert.deepEqual(calls,['prepare']);
+ calls=[];assert.equal((await action('check',deps)).ok,false);assert.deepEqual(calls,['status']);
+ deps.inspect=()=>({phase:'applied',restoreAction:'restore'});calls=[];
+ assert.equal((await action('inspect-restore',deps)).restoreAction,'restore');assert.deepEqual(calls,[]);
+ await assert.rejects(action('arbitrary-command',deps),/Unsupported/);
+ console.log('PASS menu state transitions, resume, no duplicate apply, failures and read-only restore inspection');
+ const encoded=encodedMenu(__dirname,"C:\\User's tools\\node.exe",'C:\\Users\\测试\\AppData\\Local');
+ assert(encoded.length<30000);const source=Buffer.from(encoded,'base64').toString('utf16le');
+ assert(source.includes("User''s tools"));for(const label of ['检查连接','还原','Check connection','Repair / Resume','Restore'])assert(source.includes(label));
+ assert(!source.includes('-ExecutionPolicy'));
+ const exe=path.join(process.env.SystemRoot,'System32','WindowsPowerShell','v1.0','powershell.exe');
+ const code="$source=[Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('"+encoded+"'));$tokens=$null;$errors=$null;[void][Management.Automation.Language.Parser]::ParseInput($source,[ref]$tokens,[ref]$errors);if($errors.Count){$errors|Out-String|Write-Error;exit 1}";
+ cp.execFileSync(exe,['-NoProfile','-NonInteractive','-Command','-'],{input:code+'\n',encoding:'utf8',windowsHide:true,maxBuffer:1024*1024});
+ console.log('PASS both languages, apostrophe/Unicode paths, command length and PowerShell parser');
+ for(const name of fs.readdirSync(__dirname).filter(n=>n.endsWith('.cjs')))cp.execFileSync(process.execPath,['--check',path.join(__dirname,name)],{windowsHide:true});
+ console.log('PASS all JavaScript entry points parse; no live configuration changed');
+}
+main().catch(e=>{console.error(e);process.exitCode=1});

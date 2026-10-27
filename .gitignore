@@ -1,0 +1,11 @@
+state.json
+state.tmp
+backups/
+ui-jobs/
+ui-language.txt
+*.log
+*.zip
+hosts.before*
+environment-backup.json
+clash-verge.yaml
+profiles.yaml

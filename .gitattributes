@@ -1,0 +1,7 @@
+* text=auto eol=lf
+# Keep CRLF bytes in GitHub ZIP downloads as well as Windows checkouts.
+*.cmd -text whitespace=cr-at-eol
+*.cjs text eol=lf
+*.js text eol=lf
+*.ps1 text eol=lf
+*.md text eol=lf
